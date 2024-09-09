@@ -16,3 +16,8 @@
 # Add a feed source
 echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+
+git clone https://github.com/xiaorouji/openwrt-passwall.git -b packages passwall_package  # passwall源码分成了两个仓库
+git clone https://github.com/xiaorouji/openwrt-passwall.git -b luci  package/passwall
+cp -rf passwall_package/*  package/passwall
+rm -rf passwall_package
