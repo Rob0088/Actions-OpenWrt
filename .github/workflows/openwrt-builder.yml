@@ -42,7 +42,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Disk space
+    - name: 空间使用情况
       run: |
            echo "Free space:"
            df -h
@@ -91,12 +91,14 @@ jobs:
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: 下载软件包
+    # - name: Download package
       id: package
       run: |
         cd openwrt
         make defconfig
         make download -j8
-        find dl -size -1024c -exec rm -f {} \;  # 删除小于1KB的无效文件
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
 
     - name: 编译固件
       id: compile
@@ -140,11 +142,30 @@ jobs:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
-    - name: 删除工作流运行
-      uses: GitRML/delete-workflow-runs@main
+    - name: 生成版本标签
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        touch release.txt
+        [ ${UPLOAD_GOFILE} = true && ${{ steps.gofile.outputs.url }} ] && echo "🔗 [GoFile](${{ steps.gofile.outputs.url }})" >> release.txt
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: 上传文件到release
+      uses: softprops/action-gh-release@master
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        retain_days: 1
-        keep_minimum_runs: 3
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: 删除工作流
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+        retain_days: 0
+        keep_minimum_runs: 2
 
     - name: 删除旧版本
       uses: dev-drprasad/delete-older-releases@v0.1.0
