@@ -63,9 +63,6 @@ jobs:
         sudo mkdir -p $WORKDIR
         sudo chown $USER:$GROUPS $WORKDIR
 
-    - name: 检查 WORKDIR 变量
-      run: echo $WORKDIR
-
     - name: 拉取源代码
       working-directory: $WORKDIR
       run: |
