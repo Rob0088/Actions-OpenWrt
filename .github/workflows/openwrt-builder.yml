@@ -22,6 +22,7 @@ env:
   UPLOAD_WETRANSFER: false
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
+  WORKDIR: /mnt/sdb1/workdir  # 新的编译目录路径
 
 jobs:
   build:
@@ -38,14 +39,14 @@ jobs:
         haskell: true
         large-packages: true
         swap-storage: true
-        
+
     - name: Checkout
       uses: actions/checkout@main
 
     - name: 空间使用情况
       run: |
-           echo "Free space:"
-           df -h
+        echo "Free space:"
+        df -h
            
     - name: 安装编译环境
       env:
@@ -53,65 +54,59 @@ jobs:
       run: |
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
         sudo -E apt-get -qq update
-        # sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
         sudo apt install build-essential clang flex bison g++ gawk \
         gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
         python3-setuptools rsync swig unzip zlib1g-dev file wget
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
-
+        sudo mkdir -p $WORKDIR
+        sudo chown $USER:$GROUPS $WORKDIR
 
     - name: 拉取源代码
-      working-directory: /workdir
+      working-directory: $WORKDIR
       run: |
         df -hT $PWD
         git clone -b master --single-branch --depth 1 $REPO_URL openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        ln -sf $WORKDIR/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: 读取自定义软件源
       run: |
-        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF $WORKDIR/openwrt/feeds.conf.default
         chmod +x $DIY_P1_SH
-        cd openwrt
+        cd $WORKDIR/openwrt
         $GITHUB_WORKSPACE/$DIY_P1_SH
 
     - name: 更新自定义源
-      run: cd openwrt && ./scripts/feeds update -a
+      run: cd $WORKDIR/openwrt && ./scripts/feeds update -a
 
     - name: 安装源
-      run: cd openwrt && ./scripts/feeds install -a
+      run: cd $WORKDIR/openwrt && ./scripts/feeds install -a
 
     - name: 读取自定义脚本
       run: |
-        [ -e files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        [ -e files ] && mv files $WORKDIR/openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE $WORKDIR/openwrt/.config
         chmod +x $DIY_P2_SH
-        cd openwrt
+        cd $WORKDIR/openwrt
         $GITHUB_WORKSPACE/$DIY_P2_SH
 
     - name: 下载软件包
-    # - name: Download package
-      id: package
       run: |
-        cd openwrt
+        cd $WORKDIR/openwrt
         make defconfig
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
     - name: 编译固件
-      id: compile
       run: |
-        cd openwrt
+        cd $WORKDIR/openwrt
         make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success">>$GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-
 
     - name: 检查空间使用情况
       if: (!cancelled())
@@ -122,13 +117,11 @@ jobs:
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
-        path: openwrt/bin
+        path: $WORKDIR/openwrt/bin
 
     - name: 组织文件
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd openwrt/bin/targets/*/*
+        cd $WORKDIR/openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success">>$GITHUB_OUTPUT
@@ -141,8 +134,6 @@ jobs:
         path: ${{ env.FIRMWARE }}
 
     - name: 生成版本标签
-      id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         touch release.txt
