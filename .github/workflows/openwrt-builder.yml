@@ -64,7 +64,7 @@ jobs:
         sudo chown $USER:$GROUPS $WORKDIR
 
     - name: 拉取源代码
-      working-directory: $WORKDIR
+      working-directory: ${{ env.WORKDIR }}
       run: |
         df -hT $PWD
         git clone -b master --single-branch --depth 1 $REPO_URL openwrt
